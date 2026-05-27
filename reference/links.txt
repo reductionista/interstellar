@@ -1,0 +1,7 @@
+Ari Heinze's Homepage (author of heliolinc/heliolinx):
+https://www.ariheinze.com/
+
+Lasair REST-API:
+https://lasair.readthedocs.io/en/main/core_functions/rest-api.html
+
+
