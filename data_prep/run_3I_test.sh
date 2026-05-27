@@ -14,8 +14,11 @@ cd "$TESTS_DIR"
 
 echo "=== Running from $TESTS_DIR ==="
 
-# Reference MJD: near center of obs window (Jun–Oct 2025; perihelion Oct 29 = MJD ~60947)
-MJDREF=60920
+# Reference MJD: center of inbound window (MJD 60810–60870).
+# At MJD 60840, 3I is at r≈4.067 AU, near the r=4.0 grid point (gap 0.067 AU).
+# rdot≈-0.0331 AU/day, closest grid hypothesis rdot≈-0.031 AU/day (gap 0.002 AU/day).
+# Expected position error ~0.08 AU, well within clustrad=0.3 AU.
+MJDREF=60840
 
 # === Step 1: make_tracklets ===
 # - maxvel 15 deg/day: 3I was moving ~1-10 deg/day depending on phase
@@ -27,7 +30,7 @@ MJDREF=60920
 echo ""
 echo "=== Step 1: make_tracklets ==="
 time make_tracklets \
-  -dets       3I_detections.csv \
+  -dets       3I_detections_inbound.csv \
   -outimgs    3I_images.txt \
   -pairs      3I_pairs.txt \
   -pairdets   3I_pairdets.csv \
@@ -62,7 +65,7 @@ time heliolinc_interstellar \
   -mjd          $MJDREF \
   -obspos       Earth1day2025.txt \
   -heliodist    heliohyp_interstellar01.txt \
-  -clustrad     0.2 \
+  -clustrad     15000000 \
   -npt          2 \
   -minobsnights 2 \
   -mintimespan  0.5 \
@@ -73,7 +76,8 @@ time heliolinc_interstellar \
   -outrms       3I_clusters_rms.csv
 
 echo "heliolinc_interstellar done."
-echo "Cluster candidates: $(wc -l < 3I_clusters.csv)"
+echo "Clusters found (RMS file): $(( $(wc -l < 3I_clusters_rms.csv) - 1 ))"
+echo "Total detection records in cluster file: $(( $(wc -l < 3I_clusters.csv) - 1 ))"
 
 # === Step 3: link_refine_Herget ===
 echo ""
@@ -84,6 +88,7 @@ time link_refine_Herget \
   -pairdet  3I_pairdets.csv \
   -lflist   3I_clusterlist.txt \
   -mjd      $MJDREF \
+  -maxrms   50000000 \
   -outfile  3I_refined.csv \
   -outrms   3I_refined_rms.csv
 
