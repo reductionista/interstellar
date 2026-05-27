@@ -7,5 +7,6 @@ heliolinc2_src/
 heliolinx/
 thor_src/
 
-# Credentials
-creds/
+# Credentials and broker configs
+fink/
+lasair/
