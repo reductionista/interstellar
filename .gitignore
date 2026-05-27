@@ -1,0 +1,11 @@
+.venv
+.ipynb_checkpoints
+.git
+
+# Upstream source clones — large, tracked separately
+heliolinc2_src/
+heliolinx/
+thor_src/
+
+# Credentials
+creds/
