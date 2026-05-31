@@ -33,19 +33,19 @@ where v_inf_max ~ 200 km/s (galactic velocity dispersion upper bound) = 0.1155 A
 """
 
 import math
+from pathlib import Path
 
-GM_SUN = 2.9591220828e-4   # AU^3 / day^2
-
-import os
-OUTFILE = os.path.join(os.path.dirname(__file__), "../heliolinc2_src/tests/heliohyp_interstellar01.txt")
+GM_SUN  = 2.9591220828e-4   # AU^3 / day^2
+TEST_DATA = Path(__file__).parent.parent / "test_data"
 
 def v_esc(r):
     """Escape velocity at r (AU) in AU/day."""
     return math.sqrt(2.0 * GM_SUN / r)
 
-def rdot_hyperbolic(r, v_inf_au_day):
-    """Total inbound radial speed at r for given v_inf (AU/day), always negative."""
-    return -math.sqrt(v_inf_au_day**2 + 2.0 * GM_SUN / r)
+def rdot_hyperbolic(r, v_inf_au_day, inbound=True):
+    """Total radial speed at r for given v_inf (AU/day). Negative if inbound."""
+    speed = math.sqrt(v_inf_au_day**2 + 2.0 * GM_SUN / r)
+    return -speed if inbound else speed
 
 # r grid: fine near the Sun, coarser at large distances
 r_values = []
@@ -71,24 +71,34 @@ v_inf_au_values  = [v * KM_PER_S_TO_AU_PER_DAY for v in v_inf_kms_values]
 
 rows = []
 for r in r_values:
-    ve = v_esc(r)
     # Also include a barely-hyperbolic entry (v_inf = 1 km/s) to probe the boundary
     for v_inf in [0.001 * KM_PER_S_TO_AU_PER_DAY] + v_inf_au_values:
-        rdot = rdot_hyperbolic(r, v_inf)
-        # mean_accel = 1.0 means purely Keplerian centripetal (no extra perturbation)
-        rows.append((r, rdot, 1.0))
+        for inbound in (True, False):
+            rdot = rdot_hyperbolic(r, v_inf, inbound=inbound)
+            # mean_accel = 1.0 means purely Keplerian centripetal (no extra perturbation)
+            rows.append((r, rdot, 1.0))
 
 # Deduplicate and sort
 rows = sorted(set((round(r,4), round(rd,6), a) for r,rd,a in rows))
 
-with open(OUTFILE, "w") as f:
+# Write inbound-only grid (backward-compatible)
+outfile_01 = TEST_DATA / "heliohyp_interstellar01.txt"
+inbound_rows = [(r, rd, a) for r, rd, a in rows if rd < 0]
+with open(outfile_01, "w") as f:
+    f.write("#r(AU) rdot(AU/day) mean_accel\n")
+    for r, rdot, a in inbound_rows:
+        f.write(f"{r:.4f} {rdot:.6f} {a:.1f}\n")
+print(f"Wrote {len(inbound_rows)} inbound hypothesis rows to {outfile_01}")
+
+# Write full inbound+outbound grid
+outfile_02 = TEST_DATA / "heliohyp_interstellar02.txt"
+with open(outfile_02, "w") as f:
     f.write("#r(AU) rdot(AU/day) mean_accel\n")
     for r, rdot, a in rows:
         f.write(f"{r:.4f} {rdot:.6f} {a:.1f}\n")
+print(f"Wrote {len(rows)} inbound+outbound hypothesis rows to {outfile_02}")
 
-print(f"Wrote {len(rows)} hypothesis rows to {OUTFILE}")
-
-# Print a summary showing 3I/ATLAS reference point
+# Summary
 r_ref = 3.0  # AU at which 3I was well-detected
 ve_ref = v_esc(r_ref)
 rdot_3I = rdot_hyperbolic(r_ref, 58 * KM_PER_S_TO_AU_PER_DAY)

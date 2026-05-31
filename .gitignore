@@ -7,6 +7,13 @@ heliolinc2_src/
 heliolinx/
 thor_src/
 
-# Credentials and broker configs
+# Credentials, broker configs, and downloaded alert data
 fink/
-lasair/
+lasair/lasair-examples
+lasair/live-data
+
+# Live pipeline data (generated, not source)
+data/
+
+# Scratch files
+migration-plan.txt
