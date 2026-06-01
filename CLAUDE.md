@@ -7,7 +7,7 @@ Detect interstellar objects (hyperbolic orbits, e > 1) in Rubin/LSST alert strea
 Known interstellar objects for reference:
 - **1I/'Oumuamua**: v∞ ≈ 26 km/s, ecliptic lat ~37°
 - **2I/Borisov**: v∞ ≈ 32 km/s, inclination ~44°
-- **3I/ATLAS**: v∞ ≈ 58 km/s, perihelion Oct 29 2025 (MJD ~60947). **We have confirmed detection of 3I/ATLAS** using the pipeline on inbound-window MPC data (orbit_e = 6.14, 11 nights, 52-day timespan).
+- **3I/ATLAS**: v∞ ≈ 58 km/s, perihelion Oct 29 2025 (MJD ~60977). **We have confirmed detection of 3I/ATLAS** using the pipeline on inbound-window MPC data (orbit_e = 6.14, 11 nights, 52-day timespan).
 
 Interstellars are not confined to the ecliptic — search the full Rubin survey footprint (~18,000 sq deg, dec -70° to +15°).
 
@@ -46,9 +46,9 @@ python data_prep/run_3I_heliolinx.py
 
 # Run on real Rubin data
 python data_prep/run_heliolinx.py \
-    --input data/fink_detections_april_may.csv \
-    --output-prefix fink_apr_may \
-    --mjd-min 61122 --mjd-max 61213
+    --input data/fink_detections.csv \
+    --output-prefix fink_march_april \
+    --mjd-min 61100 --mjd-max 61160
 ```
 
 ## Docker
@@ -131,9 +131,9 @@ docker run --rm \
 ```
 MJD 60810  3I inbound window start
 MJD 60840  3I test MJDREF (r≈4 AU)
-MJD 60947  3I perihelion (Oct 29 2025)
+MJD 60977  3I perihelion (Oct 29 2025)
 MJD 61097  Rubin science operations begin (~Feb 24 2026)
-MJD 61122  April 1 2026
+MJD 61131  April 1 2026
 MJD 61152  Mid-April/May (good MJDREF for spring 2026 data)
 MJD 61222  End of current Earth ephemeris coverage
 ```
