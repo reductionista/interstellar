@@ -40,12 +40,12 @@
 
   docker run --rm \
     -v /path/to/output:/app/interstellar/data \
-    -v /path/to/output/heliolinx:/app/interstellar/data/heliolinx \
     interstellar:latest \
     python /app/interstellar/data_prep/run_heliolinx.py \
       --input /app/interstellar/data/fink_detections_may.csv \
       --output-prefix fink_may \
-      --mjd-min 61152 --mjd-max 61213
+      --mjd-min 61161 --mjd-max 61191 \
+    > /path/to/output/fink_may.log 2>&1
 
   # Building the docker image
 
