@@ -45,7 +45,7 @@ make deps                  # creates .venv and installs requirements.txt
 python python_scripts/run_3I_heliolinx.py
 
 # Run on real Rubin data
-python python_scripts/run_heliolinx.py \
+python -u python_scripts/run_heliolinx.py \
     --input data/fink_detections.csv \
     --output-prefix fink_march_april \
     --mjd-min 61100 --mjd-max 61160

@@ -259,7 +259,7 @@ def main():
     hl_config = heliolinx.HeliolincConfig()
     hl_config.MJDref       = mjd_ref
     hl_config.clustrad     = 15_000_000.0
-    hl_config.dbscan_npt   = 2
+    hl_config.dbscan_npt   = 4
     hl_config.minobsnights = 2
     hl_config.mintimespan  = 0.5
     hl_config.mingeodist   = 0.05

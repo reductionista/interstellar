@@ -41,7 +41,7 @@
   docker run --rm \
     -v /path/to/output:/app/interstellar/data \
     interstellar:latest \
-    python /app/interstellar/python_scripts/run_heliolinx.py \
+    python -u /app/interstellar/python_scripts/run_heliolinx.py \
       --input /app/interstellar/data/fink_detections_may.csv \
       --output-prefix fink_may \
       --mjd-min 61161 --mjd-max 61191 \
