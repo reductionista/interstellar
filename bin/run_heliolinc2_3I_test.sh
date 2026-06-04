@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run heliolinc_interstellar pipeline on 3I/ATLAS MPC astrometry.
+# Runs heliolinc_interstellar pipeline from legacy C++ heliolinc2 repo (not heliolinx!) on 3I/ATLAS MPC astrometry.
 #
 # Run from data_prep/ (or anywhere) — all paths are relative to heliolinc2_src/tests/.
 # Prerequisites:

@@ -2,6 +2,9 @@
 .ipynb_checkpoints
 .git
 
+# Compiled python binaries
+python_scripts/__pycache__
+
 # Upstream source clones — large, tracked separately
 heliolinc2_src/
 heliolinx/

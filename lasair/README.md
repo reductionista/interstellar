@@ -28,4 +28,7 @@ receiving all unlinked events is lasair_965nDiaSources5.
 To start consuming:
 
   source .venv/bin/activate
-  python data_prep/lasair_kafka_subscriber.py
+  python python_lib/lasair_kafka_subscriber.py
+
+Or, if direnv is active simply:
+  python -m lasair_kafka_subscriber

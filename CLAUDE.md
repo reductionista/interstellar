@@ -14,7 +14,7 @@ Interstellars are not confined to the ecliptic — search the full Rubin survey 
 ## Repository layout
 
 ```
-data_prep/
+python_scripts/
   run_heliolinx.py          Main pipeline: detections CSV → clusters + refined candidates
   run_3I_heliolinx.py       3I/ATLAS test case (uses test_data/, confirms pipeline works)
   fink_extract_detections.py  Convert Fink parquet downloads → heliolinx-ready CSV
@@ -42,10 +42,10 @@ make deps                  # creates .venv and installs requirements.txt
 .venv/bin/pip install -e heliolinx/
 
 # Confirm 3I detection still works
-python data_prep/run_3I_heliolinx.py
+python python_scripts/run_3I_heliolinx.py
 
 # Run on real Rubin data
-python data_prep/run_heliolinx.py \
+python python_scripts/run_heliolinx.py \
     --input data/fink_detections.csv \
     --output-prefix fink_march_april \
     --mjd-min 61100 --mjd-max 61160
@@ -61,7 +61,7 @@ docker pull reductionista/interstellar    # or pull from DockerHub (arm64 and am
 docker run --rm \
     -v /path/to/data:/app/interstellar/data \
     reductionista/interstellar \
-    python /app/interstellar/data_prep/run_heliolinx.py \
+    python /app/interstellar/python_scripts/run_heliolinx.py \
         --input /app/interstellar/data/fink_detections.csv \
         --output-prefix fink_run1
 
