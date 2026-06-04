@@ -104,10 +104,11 @@ docker run --rm \
 
 ## heliolinx parameter gotchas
 
-- **`clustrad` is in km, not AU.** Use 15,000,000 km (≈0.1 AU effective at r=4 AU). The effective clustering radius scales with geocentric distance.
-- **`linkPurify.maxrms` in km.** Default 100,000 km is too tight for distant objects. Use 50,000,000 km for a ~60-day window at r≈4 AU.
+- **`clustrad` is in km, not AU.** Default/baseline 15,000,000 km = 0.1 AU at r=1 AU (REF_GEODIST). The effective physical radius scales **linearly with geocentric distance**: `effective = clustrad × georadcen / REF_GEODIST`. So at r=4 AU the effective radius is ~0.4 AU — 4× larger. This is intentional: astrometric error is angular (fixed arcsec), so its physical projection grows with distance, and a constant-sigma tolerance requires a growing physical radius. `clustchangerad` (default 0.5 AU) is a floor: inward of it the radius is held at `clustrad × clustchangerad / REF_GEODIST` rather than shrinking further.
+- **`linkPurify.maxrms` in km — compactness gate, must be set relative to `clustrad`.** `maxrms` filters on `totRMS`: the RMS spread of cluster members around the cluster center in the same 6D km metric. A real candidate has all detections projecting to nearly the same state vector → totRMS << clustrad. A noise cluster fills the ball → totRMS ≈ 0.7–0.9 × clustrad. **Target: maxrms ≈ 10–20% of clustrad.** If `maxrms > clustrad`, the filter is completely disabled (every KDRclust ball passes by construction). We currently use 50,000,000 km with clustrad=15M km — filter is disabled. Fix once clustrad is tuned. Separate from `max_astrom_rms` (arcsec), which is the orbit-fit residual quality cut in linkPurify and is the more meaningful final filter.
 - **`LinkPurifyConfig` has no `MJDref` field** — don't set it.
 - **`use_univar = 9`** for NotKepler/interstellar mode (unbound orbits). Value 8 + use_univar_flag=1.
+- **`dbscan_npt` is a misnomer** — the clusterer is KD-tree range clustering (`KDRclust`), not DBSCAN. The field name is heliolinx's own legacy naming; we're stuck with it in the API call.
 - **`R_dubdot` = dimensionless multiplier of −GM/r².** Value 1.0 = correct for high-v∞ interstellars.
 - **Do NOT deduplicate by `(mjd, obscode)`** for real Rubin data — multiple diaSources in the same exposure share the same MJD but are different objects. (The 3I test data did need this deduplication, but real Rubin data does not.)
 - **`observer_vel()` and `heliolinc()` require EarthState with lowercase `x,y,z,vx,vy,vz`** but `load_earth_ephemerides()` returns uppercase. Copy field-by-field.
@@ -142,4 +143,20 @@ MJD 61222  End of current Earth ephemeris coverage
 
 - **heliolinx source**: cloned at `heliolinx/` (gitignored). Install with `pip install -e heliolinx/`.
 - **heliolinc2 (legacy)**: cloned at `heliolinc2_src/` (gitignored). CLI-based, frozen. Reference only.
-- Large heliolinx runs (13k+ detections) require significant RAM. Use the Docker image on a capable machine rather than running directly on low-memory hardware.
+- **thor**: cloned at `thor_src/` (gitignored). Alternative pipeline — not yet used, but a reference and fallback option.
+- heliolinc OOMs on real Rubin-density data (13k detections, 644-hyp grid) because it accumulates every hypothesis's candidate linkages in RAM before purifying — billions of detection references. This is an **algorithmic inefficiency**, not a hardware shortfall (it OOMs even with 13 GB). `run_heliolinx.py` batches the hypothesis grid (`--hyp-batch-size`) to bound peak RAM, but the underlying problem — linkages that each absorb ~25% of all detections (~3300 detections/linkage) — is a clustering-degeneracy issue still being tuned (see below).
+
+## heliolinx clustering internals
+
+Understanding this is essential for tuning `clustrad` on real Rubin data.
+
+**The 6D metric.** Each tracklet is projected to a hypothesis heliocentric distance, Kepler-integrated to MJDref, yielding a physical 3D position (km) + velocity (km/s). Velocity is multiplied by `chartimescale` (seconds) to make it km-comparable. Clustering uses a 6D Euclidean distance: `√(Δx²+Δy²+Δz²+Δvx²+Δvy²+Δvz²)` in km. `clustrad` is compared to this distance.
+
+**KDRclust — not DBSCAN.** The clusterer (`KDRclust_6i01` in `solarsyst_dyn_geo01.cpp`) is KD-tree range clustering, not classic DBSCAN. Crucially, it does **not** do transitive expansion: for each core point (≥`dbscan_npt` neighbors within `clustrad`) it emits one cluster = that ball, without consuming the neighbors. In dense data almost every point is a core point, producing thousands of **heavily overlapping** clusters — each linkage references ~25% of all detections. This is the source of the 2B detection-membership counts and the OOM. Lowering `clustrad` is the primary lever.
+
+**Low-memory C++ variants exist but are not Python-exposed.** `heliolinc_lowmem.cpp` and `form_clusters_*_lowmem()` use compact `shortclust`/`uint_pair` types. Not accessible from the Python API — future optimization path.
+
+**run_heliolinx.py CLI args added for tuning:**
+- `--clustrad` (default 15e6 km) — the primary lever for megacluster degeneracy
+- `--maxrms` (default 50e6 km) — linkPurify compactness threshold; currently > clustrad so filter is disabled. TODO: set to ~10–20% of final clustrad value.
+- `--hyp-batch-size` (default 50) — hypotheses per heliolinc+linkPurify batch; bounds peak RAM

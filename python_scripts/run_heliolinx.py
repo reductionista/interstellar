@@ -36,6 +36,12 @@ DATA      = ROOT / "data"
 
 IMAGETIMETOL = 10.0 / 86400.0   # 10 seconds in days
 
+DEG2RAD = np.pi / 180.0
+# Ecliptic north pole in equatorial ICRS Cartesian (J2000 obliquity 23.4392°).
+# Using h · ECLIPTIC_NORTH / |h| gives cos(inclination relative to ecliptic).
+_OBL = 23.4392 * DEG2RAD
+ECLIPTIC_NORTH = np.array([0.0, -np.sin(_OBL), np.cos(_OBL)])
+
 
 # ---------------------------------------------------------------------------
 # Stationary source pre-filter
@@ -109,6 +115,94 @@ def filter_stationary(df, threshold_arcsec=5.0, min_other_nights=2):
 
 
 # ---------------------------------------------------------------------------
+# Per-hypothesis inclination filter
+# ---------------------------------------------------------------------------
+
+def compute_tracklet_inclinations(tracklets, imglog, hyp_r, hyp_rdot):
+    """
+    For each tracklet, compute the orbital inclination (degrees, ecliptic J2000)
+    implied by the given hypothesis (r in AU, rdot in AU/day).
+
+    Strategy: project each tracklet to a heliocentric 3D state vector using the
+    hypothesis distance + the observed angular velocity, then derive inclination
+    from the angular momentum vector h = r × v.
+
+    The coordinate system is equatorial ICRS (same as heliolinx internals).
+    Inclination is measured against the ecliptic north pole, not the celestial
+    north pole — the two differ by the obliquity (~23.4°).
+    """
+    i1 = tracklets['Img1']    # image indices into imglog
+    i2 = tracklets['Img2']
+
+    # Midpoint sky position (radians)
+    ra_mid  = (tracklets['RA1']  + tracklets['RA2'])  * 0.5 * DEG2RAD
+    dec_mid = (tracklets['Dec1'] + tracklets['Dec2']) * 0.5 * DEG2RAD
+
+    # Angular velocity (rad/day) from the two endpoints
+    dt = imglog['MJD'][i2] - imglog['MJD'][i1]          # (N,) days
+    dt = np.where(np.abs(dt) < 1e-10, 1e-10, dt)        # guard against zero
+    dra_dt  = (tracklets['RA2']  - tracklets['RA1'])  * DEG2RAD / dt
+    ddec_dt = (tracklets['Dec2'] - tracklets['Dec1']) * DEG2RAD / dt
+
+    # Observer heliocentric state at tracklet midpoint (AU, AU/day)
+    obs_pos = np.column_stack([
+        (imglog['X'][i1]  + imglog['X'][i2])  * 0.5,
+        (imglog['Y'][i1]  + imglog['Y'][i2])  * 0.5,
+        (imglog['Z'][i1]  + imglog['Z'][i2])  * 0.5,
+    ])
+    obs_vel = np.column_stack([
+        (imglog['VX'][i1] + imglog['VX'][i2]) * 0.5,
+        (imglog['VY'][i1] + imglog['VY'][i2]) * 0.5,
+        (imglog['VZ'][i1] + imglog['VZ'][i2]) * 0.5,
+    ])
+
+    # Unit vector toward object (N, 3)
+    cd, sd = np.cos(dec_mid), np.sin(dec_mid)
+    cr, sr = np.cos(ra_mid),  np.sin(ra_mid)
+    u = np.column_stack([cd * cr, cd * sr, sd])
+
+    # Time-derivative of unit vector (N, 3), units 1/day (radians dimensionless)
+    du_dt = np.column_stack([
+        -cd * sr * dra_dt - sd * cr * ddec_dt,
+         cd * cr * dra_dt - sd * sr * ddec_dt,
+         cd * ddec_dt,
+    ])
+
+    # Heliocentric position and velocity (AU, AU/day)
+    r_obj = obs_pos + hyp_r    * u
+    v_obj = obs_vel + hyp_rdot * u + hyp_r * du_dt
+
+    # Angular momentum h = r × v (N, 3), AU²/day
+    h = np.cross(r_obj, v_obj)
+    h_mag = np.linalg.norm(h, axis=1)
+    h_mag = np.where(h_mag < 1e-30, 1e-30, h_mag)   # guard against degenerate radial motion
+
+    # Inclination relative to ecliptic J2000
+    cos_i = np.clip(h @ ECLIPTIC_NORTH / h_mag, -1.0, 1.0)
+    return np.degrees(np.arccos(cos_i))
+
+
+def apply_incl_filter(tracklets, trk2det, incl, min_incl):
+    """
+    Keep only tracklets with implied inclination >= min_incl degrees.
+    Remaps tracklet indices in trk2det to match the filtered array.
+    Returns (filtered_tracklets, filtered_trk2det).
+    """
+    keep = incl >= min_incl
+    if keep.all():
+        return tracklets, trk2det
+
+    new_idx = np.full(len(tracklets), -1, dtype=np.int64)
+    new_idx[keep] = np.arange(int(keep.sum()))
+
+    valid = keep[trk2det['i1']]
+    ft2d = trk2det[valid].copy()
+    ft2d['i1'] = new_idx[trk2det['i1'][valid]]
+
+    return tracklets[keep], ft2d
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -131,6 +225,30 @@ def main():
                         help='Arcsec radius for stationary-source filter (0 to disable)')
     parser.add_argument('--stationary-nights', type=int, default=2,
                         help='Min cross-night matches required to flag as stationary')
+    parser.add_argument('--clustrad', type=float, default=15_000_000.0,
+                        help='heliolinc DBSCAN clustering radius in KM (not AU). Controls how '
+                             'close two state vectors must be in phase space to join the same '
+                             'cluster. Effective radius scales with geocentric distance, so the '
+                             'same value is more permissive at larger r. Too large → degenerate '
+                             'megaclusters that absorb unrelated detections (default 15e6).')
+    parser.add_argument('--maxrms', type=float, default=50_000_000.0,
+                        help='linkPurify max RMS residual in KM for accepting a purified '
+                             'linkage (default 50e6).')
+    parser.add_argument('--hyp-batch-size', type=int, default=50,
+                        help='Process the hypothesis grid in batches of this many rows, '
+                             'running heliolinc+linkPurify per batch and merging the refined '
+                             'candidates. Bounds peak RAM (heliolinc accumulates all linkages '
+                             'across hypotheses before purifying, which OOMs on large grids). '
+                             'Use 0 or a value >= grid size to process all at once.')
+    parser.add_argument('--min-incl', type=float, default=0.0,
+                        help='Per-hypothesis inclination pre-filter (degrees). For each '
+                             'hypothesis, compute the orbital inclination implied by each '
+                             'tracklet and drop tracklets with inclination < this threshold '
+                             'before passing to heliolinc. Interstellar objects have '
+                             'isotropically distributed inclinations (P(i<15°) ≈ 3.4%%), '
+                             'while prograde solar-system objects cluster near 0°. '
+                             'Suggested value: 15. Forces one hypothesis per heliolinc call. '
+                             'Default 0 = disabled (existing behaviour).')
     args = parser.parse_args()
 
     out_dir = DATA / 'heliolinx'
@@ -254,11 +372,21 @@ def main():
         print("No tracklets formed — data too sparse. Exiting.")
         sys.exit(0)
 
-    # --- Step 6: heliolinc ---
-    print("\n=== Step 6: heliolinc ===")
+    # --- Steps 6+7: heliolinc + linkPurify, batched over the hypothesis grid ---
+    #
+    # heliolinc accumulates the candidate linkages from *every* hypothesis in RAM
+    # before linkPurify runs. On large grids (644 hyps × ~3300 linkages each, with
+    # thousands of detections per linkage) this reaches billions of detection
+    # references and OOMs. Hypotheses are clustered independently, so we process the
+    # grid in batches: heliolinc+linkPurify per batch, keep only the small purified
+    # output, and free the giant cluster set before the next batch. Peak RAM is then
+    # bounded by one batch instead of the whole grid.
+    print("\n=== Steps 6+7: heliolinc + linkPurify (batched) ===")
+    prefix = args.output_prefix
+
     hl_config = heliolinx.HeliolincConfig()
     hl_config.MJDref       = mjd_ref
-    hl_config.clustrad     = 15_000_000.0
+    hl_config.clustrad     = args.clustrad
     hl_config.dbscan_npt   = 4
     hl_config.minobsnights = 2
     hl_config.mintimespan  = 0.5
@@ -268,29 +396,93 @@ def main():
     hl_config.max_v_inf    = 200.0
     hl_config.use_univar   = 9
 
-    clusters, clust2det = heliolinx.heliolinc(
-        hl_config, imglog, pairdets, tracklets, trk2det, radhyp, earthpos)
-    print(f"  {len(clusters)} raw clusters")
-
-    # --- Step 7: linkPurify ---
-    print("\n=== Step 7: linkPurify ===")
     lp_config = heliolinx.LinkPurifyConfig()
-    lp_config.maxrms       = 50_000_000.0
+    lp_config.maxrms       = args.maxrms
     lp_config.minobsnights = 2
     lp_config.minpointnum  = 4
 
-    refined, refined2det = heliolinx.linkPurify(
-        lp_config, imglog, pairdets, clusters, clust2det)
-    print(f"  {len(refined)} refined candidates")
+    n_hyp = len(radhyp)
+    if args.min_incl > 0:
+        # Inclination filter requires per-hypothesis tracklet sets — force batch=1.
+        batch_size = 1
+        print(f"  Inclination pre-filter: min_incl={args.min_incl}°  "
+              f"(forcing batch_size=1, one hypothesis per heliolinc call)")
+    else:
+        batch_size = args.hyp_batch_size if args.hyp_batch_size > 0 else n_hyp
+        batch_size = min(batch_size, n_hyp)
+    n_batches = (n_hyp + batch_size - 1) // batch_size
+    print(f"  {n_hyp} hypotheses in {n_batches} batch(es) of up to {batch_size}")
 
-    # --- Step 8: Save ---
+    clusters_path = out_dir / f"{prefix}_clusters.csv"
+    if clusters_path.exists():
+        clusters_path.unlink()          # don't append onto a stale run
+    refined_parts = []
+    total_clusters = 0
+
+    for b in range(n_batches):
+        lo, hi = b * batch_size, min((b + 1) * batch_size, n_hyp)
+
+        # --- Optional per-hypothesis inclination filter ---
+        if args.min_incl > 0:
+            # Single hypothesis per iteration when filtering is active.
+            hyp_r    = float(radhyp['HelioRad'][lo])
+            hyp_rdot = float(radhyp['R_dot'][lo])
+            incl = compute_tracklet_inclinations(tracklets, imglog, hyp_r, hyp_rdot)
+            ft, ft2d = apply_incl_filter(tracklets, trk2det, incl, args.min_incl)
+            n_kept = len(ft)
+            n_drop = len(tracklets) - n_kept
+            if n_kept < hl_config.dbscan_npt:
+                # Fewer surviving tracklets than the minimum cluster size — skip.
+                continue
+            run_tracklets, run_trk2det = ft, ft2d
+            incl_note = f" ({n_kept}/{len(tracklets)} tracklets after incl filter, dropped {n_drop})"
+        else:
+            run_tracklets, run_trk2det = tracklets, trk2det
+            incl_note = ""
+
+        # Copy the hypothesis slice into a fresh contiguous array.
+        sub = heliolinx.create_hlradhyp(hi - lo)
+        sub['HelioRad'] = radhyp['HelioRad'][lo:hi]
+        sub['R_dot']    = radhyp['R_dot'][lo:hi]
+        sub['R_dubdot'] = radhyp['R_dubdot'][lo:hi]
+
+        print(f"\n  --- Batch {b + 1}/{n_batches}: hypotheses {lo}–{hi - 1}{incl_note} ---")
+        clusters, clust2det = heliolinx.heliolinc(
+            hl_config, imglog, pairdets, run_tracklets, run_trk2det, sub, earthpos)
+        print(f"    {len(clusters)} raw clusters")
+        total_clusters += len(clusters)
+
+        # Append raw clusters to disk so we never hold the full set in RAM.
+        pd.DataFrame(clusters).to_csv(
+            clusters_path, mode='a', header=(b == 0), index=False)
+
+        refined, refined2det = heliolinx.linkPurify(
+            lp_config, imglog, pairdets, clusters, clust2det)
+        print(f"    {len(refined)} refined candidates")
+        if len(refined) > 0:
+            refined_parts.append(pd.DataFrame(refined))
+
+        # Free the big per-batch structures before the next iteration.
+        del clusters, clust2det, refined, refined2det
+
+    print(f"\n  Total raw clusters across all batches: {total_clusters}")
+    print(f"  Wrote {prefix}_clusters.csv")
+
+    # --- Step 8: Merge refined candidates and save ---
     print(f"\n=== Step 8: Save outputs to {out_dir} ===")
-    prefix = args.output_prefix
+    if refined_parts:
+        refined_df = pd.concat(refined_parts, ignore_index=True)
+        # The same object can be purified under adjacent hypotheses in different
+        # batches; cross-batch dedup isn't done by linkPurify, so drop exact
+        # duplicate rows. (Near-duplicates of a real candidate are harmless — we
+        # inspect candidates individually — but exact dupes just add noise.)
+        before = len(refined_df)
+        refined_df = refined_df.drop_duplicates().reset_index(drop=True)
+        if len(refined_df) < before:
+            print(f"  Dropped {before - len(refined_df)} exact-duplicate refined rows")
+    else:
+        refined_df = pd.DataFrame()
 
-    pd.DataFrame(clusters).to_csv(out_dir / f"{prefix}_clusters.csv", index=False)
-    print(f"  Wrote {prefix}_clusters.csv ({len(clusters)} rows)")
-
-    refined_df = pd.DataFrame(refined)
     refined_df.to_csv(out_dir / f"{prefix}_refined.csv", index=False)
     print(f"  Wrote {prefix}_refined.csv ({len(refined_df)} rows)")
 
