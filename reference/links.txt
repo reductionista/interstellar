@@ -4,4 +4,6 @@ https://www.ariheinze.com/
 Lasair REST-API:
 https://lasair.readthedocs.io/en/main/core_functions/rest-api.html
 
+LSST Template coverage by band:
+https://s3df.slac.stanford.edu/people/ebellm/template_coverage/template_coverage.html
 
