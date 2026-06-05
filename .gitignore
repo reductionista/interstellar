@@ -3,7 +3,8 @@
 .git
 
 # Compiled python binaries
-python_scripts/__pycache__
+__pycache__
+#python_scripts/__pycache__
 
 # Upstream source clones — large, tracked separately
 heliolinc2_src/
