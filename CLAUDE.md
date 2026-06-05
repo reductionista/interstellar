@@ -112,6 +112,7 @@ docker run --rm \
 - **`R_dubdot` = dimensionless multiplier of −GM/r².** Value 1.0 = correct for high-v∞ interstellars.
 - **Do NOT deduplicate by `(mjd, obscode)`** for real Rubin data — multiple diaSources in the same exposure share the same MJD but are different objects. (The 3I test data did need this deduplication, but real Rubin data does not.)
 - **`observer_vel()` and `heliolinc()` require EarthState with lowercase `x,y,z,vx,vy,vz`** but `load_earth_ephemerides()` returns uppercase. Copy field-by-field.
+- **`observer_vel()` returns position in km and velocity in km/s** — NOT AU/AU/day. `hlimage` X/Y/Z/VX/VY/VZ fields store these km values. Any Python code that uses imglog position/velocity alongside hypothesis values (which are in AU/AU/day) must convert: divide position by `AU_KM = 1.495978707e8` and multiply velocity by `86400 / AU_KM`. Failure to convert causes observer position (~1.3e8 km) to completely dominate AU-scale terms (~1), collapsing all angular momentum vectors to Earth's orbital plane and producing spurious inclinations of exactly 23.4° (the obliquity) for every tracklet.
 - **`parse_ObsCodes()` has a column-offset bug** — use the custom split()-based parser in `run_3I_heliolinx.py` instead.
 
 ## Hypothesis grid
