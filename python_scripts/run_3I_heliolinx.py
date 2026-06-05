@@ -18,6 +18,7 @@ Outputs (to test_data/heliolinx/):
 """
 
 import sys
+import argparse
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -26,15 +27,29 @@ import heliolinx
 from heliolinx import solarsyst_dyn_geo as sdg
 
 # ---------------------------------------------------------------------------
+# CLI args
+# ---------------------------------------------------------------------------
+parser = argparse.ArgumentParser(description="3I/ATLAS heliolinx test pipeline")
+parser.add_argument("--clustrad", type=float, default=15_000_000.0,
+                    help="Clustering radius in km (default: 15000000)")
+parser.add_argument("--maxrms", type=float, default=50_000_000.0,
+                    help="linkPurify maxrms in km (default: 50000000, effectively disabled)")
+parser.add_argument("--output-dir", type=str, default=None,
+                    help="Output directory (default: test_data/heliolinx/)")
+args = parser.parse_args()
+
+# ---------------------------------------------------------------------------
 # Paths and constants
 # ---------------------------------------------------------------------------
 TEST_DATA = Path(__file__).parent.parent / "test_data"
-OUT_DIR   = TEST_DATA / "heliolinx"
+OUT_DIR   = Path(args.output_dir) if args.output_dir else TEST_DATA / "heliolinx"
 
 MJDREF         = 60840.0
 MJD_MIN        = 60810.0
 MJD_MAX        = 60870.0
 IMAGETIMETOL   = 10.0 / 86400.0   # 10 seconds in days
+
+print(f"=== 3I/ATLAS clustrad sweep: clustrad={args.clustrad/1e3:.0f}K km  maxrms={args.maxrms/1e3:.0f}K km  out={OUT_DIR} ===")
 
 # ---------------------------------------------------------------------------
 # Step 1: Earth ephemeris + ObsCodes
@@ -192,7 +207,7 @@ print("\n=== Step 6: heliolinc ===")
 
 hl_config = heliolinx.HeliolincConfig()
 hl_config.MJDref       = MJDREF
-hl_config.clustrad     = 15_000_000.0   # km — clustering radius
+hl_config.clustrad     = args.clustrad
 hl_config.dbscan_npt   = 2
 hl_config.minobsnights = 2
 hl_config.mintimespan  = 0.5            # days
@@ -216,7 +231,7 @@ if len(clusters) == 0:
 print("\n=== Step 7: linkPurify ===")
 
 lp_config = heliolinx.LinkPurifyConfig()
-lp_config.maxrms       = 50_000_000.0   # km — same as old link_refine_Herget maxrms
+lp_config.maxrms       = args.maxrms
 lp_config.minobsnights = 2
 lp_config.minpointnum  = 4
 
@@ -229,21 +244,28 @@ print(f"  {len(refined)} refined candidates")
 # ---------------------------------------------------------------------------
 print(f"\n=== Step 8: Save outputs to {OUT_DIR} ===")
 
-OUT_DIR.mkdir(exist_ok=True)
+OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+tag = f"clustrad{int(args.clustrad/1000)}K"
+clusters_file = OUT_DIR / f"3I_clusters_{tag}.csv"
+refined_file  = OUT_DIR / f"3I_refined_{tag}.csv"
 
 clusters_df = pd.DataFrame(clusters)
-clusters_df.to_csv(OUT_DIR / "3I_clusters.csv", index=False)
-print(f"  Wrote 3I_clusters.csv ({len(clusters_df)} rows)")
+clusters_df.to_csv(clusters_file, index=False)
+print(f"  Wrote {clusters_file.name} ({len(clusters_df)} rows)")
 
 refined_df = pd.DataFrame(refined)
-refined_df.to_csv(OUT_DIR / "3I_refined.csv", index=False)
-print(f"  Wrote 3I_refined.csv ({len(refined_df)} rows)")
+refined_df.to_csv(refined_file, index=False)
+print(f"  Wrote {refined_file.name} ({len(refined_df)} rows)")
 
 # Quick sanity check: look for hyperbolic candidates
 if len(refined_df) > 0 and 'orbit_e' in refined_df.columns:
     hyp = refined_df[refined_df['orbit_e'] > 1.0]
     print(f"\n  Hyperbolic candidates (e > 1): {len(hyp)}")
     if len(hyp) > 0:
-        print(refined_df[['orbit_a', 'orbit_e', 'orbit_incl', 'obsnights', 'timespan']].head(5).to_string())
+        show_cols = [c for c in ['orbit_a', 'orbit_e', 'orbit_i', 'orbit_incl', 'orbit_inc',
+                                  'obsnights', 'timespan'] if c in refined_df.columns]
+        print(hyp[show_cols].head(5).to_string())
+    print(f"\n  All columns: {list(refined_df.columns)}")
 
 print("\n=== Pipeline complete ===")

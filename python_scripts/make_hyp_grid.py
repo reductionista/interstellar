@@ -47,7 +47,9 @@ def rdot_hyperbolic(r, v_inf_au_day, inbound=True):
     speed = math.sqrt(v_inf_au_day**2 + 2.0 * GM_SUN / r)
     return -speed if inbound else speed
 
-# r grid: fine near the Sun, coarser at large distances
+# r grid: fine near the Sun, coarser at large distances.
+# 2–6 AU uses 0.25 AU steps (was 0.5) — this is the prime detection zone for
+# interstellars observed pre/post-perihelion at typical survey depths.
 r_values = []
 r = 0.5
 while r <= 1.5:
@@ -56,17 +58,24 @@ while r <= 1.5:
 r = 2.0
 while r <= 6.0:
     r_values.append(round(r, 3))
-    r += 0.5
+    r += 0.25
 r = 7.0
 while r <= 15.0:
     r_values.append(round(r, 3))
     r += 1.0
 
-# v_inf grid (AU/day): from very slow (~5 km/s) to fast (~200 km/s)
+# v_inf grid (AU/day): from very slow (~5 km/s) to fast (~200 km/s).
+# The 20–75 km/s range covers all three known interstellars
+# ('Oumuamua 26, Borisov 32, 3I/ATLAS 58) and uses 5 km/s steps (was 10–15).
+# Outside that sweet spot the original spacing is kept.
 # 1 km/s = 1/1731.457 AU/day
 KM_PER_S_TO_AU_PER_DAY = 1.0 / 1731.457
 
-v_inf_kms_values = [5, 10, 15, 20, 30, 40, 50, 60, 75, 100, 130, 160, 200]
+v_inf_kms_values = [
+     5, 10, 15,                              # slow end: 5 km/s steps
+    20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75,  # sweet spot: 5 km/s steps
+    87, 100, 115, 130, 145, 160, 180, 200,   # fast end: ~15 km/s steps
+]
 v_inf_au_values  = [v * KM_PER_S_TO_AU_PER_DAY for v in v_inf_kms_values]
 
 rows = []
