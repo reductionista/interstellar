@@ -422,9 +422,12 @@ def main():
     print(f"  {n_hyp} hypotheses in {n_batches} batch(es) of up to {batch_size}")
 
     clusters_path = out_dir / f"{prefix}_clusters.csv"
+    refined_path  = out_dir / f"{prefix}_refined.csv"
     if clusters_path.exists():
         clusters_path.unlink()          # don't append onto a stale run
-    refined_parts = []
+    if refined_path.exists():
+        refined_path.unlink()
+    refined_written = 0
     total_clusters = 0
 
     for b in range(n_batches):
@@ -468,7 +471,9 @@ def main():
             lp_config, imglog, pairdets, clusters, clust2det)
         print(f"    {len(refined)} refined candidates")
         if len(refined) > 0:
-            refined_parts.append(pd.DataFrame(refined))
+            rdf = pd.DataFrame(refined)
+            rdf.to_csv(refined_path, mode='a', header=(refined_written == 0), index=False)
+            refined_written += len(rdf)
 
         # Free the big per-batch structures before the next iteration.
         del clusters, clust2det, refined, refined2det
@@ -478,8 +483,8 @@ def main():
 
     # --- Step 8: Merge refined candidates and save ---
     print(f"\n=== Step 8: Save outputs to {out_dir} ===")
-    if refined_parts:
-        refined_df = pd.concat(refined_parts, ignore_index=True)
+    if refined_written > 0:
+        refined_df = pd.read_csv(refined_path)
         # The same object can be purified under adjacent hypotheses in different
         # batches; cross-batch dedup isn't done by linkPurify, so drop exact
         # duplicate rows. (Near-duplicates of a real candidate are harmless — we
