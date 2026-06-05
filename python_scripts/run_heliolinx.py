@@ -31,7 +31,7 @@ import heliolinx
 from heliolinx import solarsyst_dyn_geo as sdg
 
 ROOT      = Path(__file__).parent.parent
-TEST_DATA = ROOT / "test_data"
+TEST_DATA = ROOT / "tests" / "data"
 DATA      = ROOT / "data"
 
 IMAGETIMETOL = 10.0 / 86400.0   # 10 seconds in days

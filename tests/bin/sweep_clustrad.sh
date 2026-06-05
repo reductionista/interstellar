@@ -9,7 +9,7 @@ set -euo pipefail
 
 REPO="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
 IMAGE="reductionista/interstellar"
-OUT_DIR="${REPO}/test_data/heliolinx/clustrad_sweep"
+OUT_DIR="${REPO}/tests/data/heliolinx/clustrad_sweep"
 
 mkdir -p "$OUT_DIR"
 
@@ -36,7 +36,7 @@ run_one() {
         python /app/interstellar/python_scripts/run_3I_heliolinx.py \
             --clustrad "$clustrad" \
             --maxrms   "$maxrms" \
-            --output-dir "/app/interstellar/test_data/heliolinx/clustrad_sweep" \
+            --output-dir "/app/interstellar/tests/data/heliolinx/clustrad_sweep" \
         2>&1 | tee "$logfile"
     echo "--- Finished  clustrad=${clustrad} km  (log: $logfile) ---"
     echo ""

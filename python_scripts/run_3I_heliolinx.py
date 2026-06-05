@@ -6,13 +6,13 @@ Runs the full makeTracklets → heliolinc → linkPurify pipeline on the
 3I/ATLAS inbound-window detections using the heliolinx Python bindings,
 with no CLI subprocess calls and no intermediate files.
 
-Inputs  (from test_data/):
+Inputs  (from tests/data/):
   3I_detections_inbound.csv   MPC astrometry filtered to MJD 60810–60870
   Earth1day2025.csv           JPL Horizons Earth ephemeris
   ObsCodes_clean.txt          MPC observatory codes
   heliohyp_interstellar01.txt Hypothesis grid (r, rdot, mean_accel)
 
-Outputs (to test_data/heliolinx/):
+Outputs (to tests/data/heliolinx/):
   3I_clusters.csv             Raw heliolinc clusters
   3I_refined.csv              linkPurify-refined candidates
 """
@@ -35,13 +35,13 @@ parser.add_argument("--clustrad", type=float, default=15_000_000.0,
 parser.add_argument("--maxrms", type=float, default=50_000_000.0,
                     help="linkPurify maxrms in km (default: 50000000, effectively disabled)")
 parser.add_argument("--output-dir", type=str, default=None,
-                    help="Output directory (default: test_data/heliolinx/)")
+                    help="Output directory (default: tests/data/heliolinx/)")
 args = parser.parse_args()
 
 # ---------------------------------------------------------------------------
 # Paths and constants
 # ---------------------------------------------------------------------------
-TEST_DATA = Path(__file__).parent.parent / "test_data"
+TEST_DATA = Path(__file__).parent.parent / "tests" / "data"
 OUT_DIR   = Path(args.output_dir) if args.output_dir else TEST_DATA / "heliolinx"
 
 MJDREF         = 60840.0

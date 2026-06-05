@@ -6,7 +6,7 @@ import heliolinx
 from heliolinx import solarsyst_dyn_geo as sdg
 
 ROOT      = Path(__file__).parent.parent
-TEST_DATA = ROOT / "test_data"
+TEST_DATA = ROOT / "tests" / "data"
 
 earth_raw = sdg.load_earth_ephemerides(TEST_DATA / "Earth1day2025.csv")
 earthpos  = heliolinx.create_EarthState(len(earth_raw))

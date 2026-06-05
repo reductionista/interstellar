@@ -36,7 +36,7 @@ import math
 from pathlib import Path
 
 GM_SUN  = 2.9591220828e-4   # AU^3 / day^2
-TEST_DATA = Path(__file__).parent.parent / "test_data"
+TEST_DATA = Path(__file__).parent.parent / "tests" / "data"
 
 def v_esc(r):
     """Escape velocity at r (AU) in AU/day."""
