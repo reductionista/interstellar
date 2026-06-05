@@ -7,12 +7,12 @@ unlinked sources (ssObjectId == 0) with positive psfFlux, and writes a CSV
 suitable for heliolinx input.
 
 Usage:
-    python data_prep/fink_extract_detections.py \\
+    python python_scripts/fink_extract_detections.py \\
         --indir fink/ftransfer_lsst_2026-05-30_895376 \\
         --output data/fink_detections.csv
 
     # Include negative-flux detections (darker than template):
-    python data_prep/fink_extract_detections.py \\
+    python python_scripts/fink_extract_detections.py \\
         --indir fink/ftransfer_lsst_2026-05-30_895376 \\
         --output data/fink_detections.csv \\
         --include-negative

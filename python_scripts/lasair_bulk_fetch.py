@@ -8,13 +8,13 @@ Checkpoints progress so it can be stopped and resumed without re-fetching.
 
 Usage:
     # Test: last 2 weeks, small sky patch, stay within 100/hr public limit
-    python data_prep/lasair_bulk_fetch.py \\
+    python python_scripts/lasair_bulk_fetch.py \\
         --mjd-min 61145 --mjd-max 61160 \\
         --ra-min 60 --ra-max 120 \\
         --rate-limit 90
 
     # Full sky, all post-Rubin data (after heavy-user approval):
-    python data_prep/lasair_bulk_fetch.py --rate-limit 9000
+    python python_scripts/lasair_bulk_fetch.py --rate-limit 9000
 
 Output CSV columns: mjd, ra_deg, dec_deg, mag, band, obscode, obsid
 """

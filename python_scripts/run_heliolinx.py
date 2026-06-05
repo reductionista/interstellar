@@ -7,12 +7,12 @@ or fink_extract_detections.py) and runs makeTracklets → heliolinc → linkPuri
 writing cluster and refined-candidate CSVs to data/heliolinx/.
 
 Usage:
-    python data_prep/run_heliolinx.py \\
+    python python_scripts/run_heliolinx.py \\
         --input data/fink_detections_March1-April31.csv \\
         --output-prefix fink_apr_may \\
         --mjd-min 61122 --mjd-max 61213
 
-    python data_prep/run_heliolinx.py \\
+    python python_scripts/run_heliolinx.py \\
         --input data/lasair_detections.csv \\
         --output-prefix lasair
 

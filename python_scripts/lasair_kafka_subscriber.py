@@ -8,9 +8,9 @@ into a CSV file suitable for heliolinx input. Designed to run continuously
 multiple runs without duplicating sources.
 
 Usage:
-    python data_prep/lasair_kafka_subscriber.py
-    python data_prep/lasair_kafka_subscriber.py --max-messages 500
-    python data_prep/lasair_kafka_subscriber.py --output data/my_detections.csv
+    python python_scripts/lasair_kafka_subscriber.py
+    python python_scripts/lasair_kafka_subscriber.py --max-messages 500
+    python python_scripts/lasair_kafka_subscriber.py --output data/my_detections.csv
 
 Output CSV columns:
     mjd, ra_deg, dec_deg, mag, psfFlux, band, obscode, obsid
