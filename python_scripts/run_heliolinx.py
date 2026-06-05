@@ -42,6 +42,12 @@ DEG2RAD = np.pi / 180.0
 _OBL = 23.4392 * DEG2RAD
 ECLIPTIC_NORTH = np.array([0.0, -np.sin(_OBL), np.cos(_OBL)])
 
+# observer_vel() returns position in km and velocity in km/s.
+# The inclination formula uses hyp_r in AU and hyp_rdot in AU/day, so we
+# convert obs_pos/obs_vel to the same units.
+AU_KM      = 1.495978707e8   # km per AU
+S_PER_DAY  = 86400.0         # seconds per day
+
 
 # ---------------------------------------------------------------------------
 # Stationary source pre-filter
@@ -144,17 +150,19 @@ def compute_tracklet_inclinations(tracklets, imglog, hyp_r, hyp_rdot):
     dra_dt  = (tracklets['RA2']  - tracklets['RA1'])  * DEG2RAD / dt
     ddec_dt = (tracklets['Dec2'] - tracklets['Dec1']) * DEG2RAD / dt
 
-    # Observer heliocentric state at tracklet midpoint (AU, AU/day)
+    # Observer heliocentric state at tracklet midpoint.
+    # imglog X/Y/Z are in km and VX/VY/VZ in km/s (from observer_vel()).
+    # Convert to AU and AU/day to match hyp_r (AU) and hyp_rdot (AU/day).
     obs_pos = np.column_stack([
         (imglog['X'][i1]  + imglog['X'][i2])  * 0.5,
         (imglog['Y'][i1]  + imglog['Y'][i2])  * 0.5,
         (imglog['Z'][i1]  + imglog['Z'][i2])  * 0.5,
-    ])
+    ]) / AU_KM
     obs_vel = np.column_stack([
         (imglog['VX'][i1] + imglog['VX'][i2]) * 0.5,
         (imglog['VY'][i1] + imglog['VY'][i2]) * 0.5,
         (imglog['VZ'][i1] + imglog['VZ'][i2]) * 0.5,
-    ])
+    ]) * (S_PER_DAY / AU_KM)
 
     # Unit vector toward object (N, 3)
     cd, sd = np.cos(dec_mid), np.sin(dec_mid)
