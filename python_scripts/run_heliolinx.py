@@ -423,12 +423,18 @@ def main():
 
     clusters_path = out_dir / f"{prefix}_clusters.csv"
     refined_path  = out_dir / f"{prefix}_refined.csv"
-    if clusters_path.exists():
-        clusters_path.unlink()          # don't append onto a stale run
-    if refined_path.exists():
-        refined_path.unlink()
+    map_path      = out_dir / f"{prefix}_refined2det.csv"
+    for p in (clusters_path, refined_path, map_path):
+        if p.exists():
+            p.unlink()                  # don't append onto a stale run
     refined_written = 0
     total_clusters = 0
+
+    # obsid for each paired detection: refined2det.i2 indexes into pairdets, and
+    # pairdets carries the original obsid in 'idstring'. Persisting cluster->obsid
+    # (rather than array indices) keeps the mapping meaningful across runs.
+    pairdet_obsids = [s.decode('ascii', 'ignore').rstrip('\x00') if isinstance(s, (bytes, bytearray))
+                      else str(s) for s in pairdets['idstring']]
 
     for b in range(n_batches):
         lo, hi = b * batch_size, min((b + 1) * batch_size, n_hyp)
@@ -472,7 +478,20 @@ def main():
         print(f"    {len(refined)} refined candidates")
         if len(refined) > 0:
             rdf = pd.DataFrame(refined)
+            # linkPurify numbers clusters per-call from 0; reassign a globally
+            # unique clusternum (= row position in this batch's output, offset by
+            # the running total) so the refined CSV joins the refined2det map
+            # across batches. refined2det.i1 is exactly that per-batch position.
+            base = refined_written
+            rdf['clusternum'] = base + np.arange(len(rdf), dtype=np.int64)
             rdf.to_csv(refined_path, mode='a', header=(refined_written == 0), index=False)
+
+            if len(refined2det) > 0:
+                i1 = np.asarray(refined2det['i1'], dtype=np.int64)
+                i2 = np.asarray(refined2det['i2'], dtype=np.int64)
+                pd.DataFrame({'cluster_id': base + i1,
+                              'obsid': [pairdet_obsids[j] for j in i2]}).to_csv(
+                    map_path, mode='a', header=(refined_written == 0), index=False)
             refined_written += len(rdf)
 
         # Free the big per-batch structures before the next iteration.
@@ -486,13 +505,28 @@ def main():
     if refined_written > 0:
         refined_df = pd.read_csv(refined_path)
         # The same object can be purified under adjacent hypotheses in different
-        # batches; cross-batch dedup isn't done by linkPurify, so drop exact
-        # duplicate rows. (Near-duplicates of a real candidate are harmless — we
-        # inspect candidates individually — but exact dupes just add noise.)
+        # batches; cross-batch dedup isn't done by linkPurify, so drop duplicate
+        # candidates. clusternum is globally unique by construction, so dedup on
+        # every *other* column. (Near-duplicates of a real candidate are harmless
+        # — we inspect candidates individually — but exact dupes just add noise.)
         before = len(refined_df)
-        refined_df = refined_df.drop_duplicates().reset_index(drop=True)
+        dedup_cols = [c for c in refined_df.columns if c != 'clusternum']
+        refined_df = refined_df.drop_duplicates(subset=dedup_cols).reset_index(drop=True)
         if len(refined_df) < before:
-            print(f"  Dropped {before - len(refined_df)} exact-duplicate refined rows")
+            print(f"  Dropped {before - len(refined_df)} duplicate refined rows")
+
+        # Renumber surviving clusters 0..N-1 and carry the same renumbering into
+        # the cluster->detection map so the two files stay joinable on clusternum.
+        oldid_to_new = {old: new for new, old in enumerate(refined_df['clusternum'].tolist())}
+        refined_df['clusternum'] = np.arange(len(refined_df), dtype=np.int64)
+        if map_path.exists():
+            mdf = pd.read_csv(map_path)
+            mdf = mdf[mdf['cluster_id'].isin(oldid_to_new)].copy()
+            mdf['cluster_id'] = mdf['cluster_id'].map(oldid_to_new).astype(np.int64)
+            mdf = mdf.sort_values('cluster_id').reset_index(drop=True)
+            mdf.to_csv(map_path, index=False)
+            print(f"  Wrote {prefix}_refined2det.csv "
+                  f"({len(mdf)} links, {mdf['cluster_id'].nunique()} clusters)")
     else:
         refined_df = pd.DataFrame()
 

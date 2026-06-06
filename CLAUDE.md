@@ -110,7 +110,7 @@ docker run --rm \
 ## heliolinx parameter gotchas
 
 - **`clustrad` is in km, not AU.** Default/baseline 15,000,000 km = 0.1 AU at r=1 AU (REF_GEODIST). The effective physical radius scales **linearly with geocentric distance**: `effective = clustrad × georadcen / REF_GEODIST`. So at r=4 AU the effective radius is ~0.4 AU — 4× larger. This is intentional: astrometric error is angular (fixed arcsec), so its physical projection grows with distance, and a constant-sigma tolerance requires a growing physical radius. `clustchangerad` (default 0.5 AU) is a floor: inward of it the radius is held at `clustrad × clustchangerad / REF_GEODIST` rather than shrinking further.
-- **`linkPurify.maxrms` in km — compactness gate, but signal/noise overlap makes it a weak filter.** `maxrms` filters on `totRMS`: the RMS spread of cluster members in the 6D km metric. Noise clusters fill the ball → totRMS ≈ 0.7–0.9 × clustrad. But real candidates at large r also have high totRMS because astrometric error projects to larger physical offsets at greater distance — with clustrad=1M km, real hyperbolic candidates had totRMS 342K–779K km (34–78% of clustrad), overlapping the noise regime. **The 10–20% rule is wrong at clustrad=1M km.** Safe value: ~85% of clustrad (e.g. 850K km for clustrad=1M km) — cuts only the most degenerate noise while keeping all real candidates. `astromRMS` (arcsec, the Herget orbit-fit residual) is the more meaningful final filter. If `maxrms > clustrad`, the filter is completely disabled.
+- **`linkPurify.maxrms` in km — compactness gate applied to *normalized* totRMS.** `totRMS` in the output is already renormalized to REF_GEODIST units (divided by `georad/REF_GEODIST`), so it is distance-independent. The maximum possible normalized totRMS equals `clustrad` (the base value); setting `maxrms > clustrad` completely disables the filter. Noise clusters fill the ball → normalized totRMS ≈ 0.7–0.9 × clustrad. **3I/ATLAS at clustrad=100K km has normalized totRMS ≈ 58K km (58% of clustrad).** Safe value: ~85% of clustrad (e.g. 85K km for clustrad=100K km) — cuts only the most degenerate noise while keeping 3I with ~27K km margin. Note: we don't yet have totRMS measurements for 1I/'Oumuamua or 2I/Borisov test cases; avoid tightening maxrms below ~85K until those are measured. `astromRMS` (arcsec, the Herget orbit-fit residual) is the more meaningful final filter.
 - **`LinkPurifyConfig` has no `MJDref` field** — don't set it.
 - **`use_univar = 9`** for NotKepler/interstellar mode (unbound orbits). Value 8 + use_univar_flag=1.
 - **`dbscan_npt` is a misnomer** — the clusterer is KD-tree range clustering (`KDRclust`), not DBSCAN. The field name is heliolinx's own legacy naming; we're stuck with it in the API call.
@@ -132,6 +132,17 @@ docker run --rm \
 - `--stationary-threshold 5.0` arcsec (safe: slowest hypothesis moves ~22 arcsec/day)
 - `--stationary-nights 2` (requires flux-consistent matches on 2+ distinct nights)
 - Also checks flux sign consistency and flux ratio (within 10× same band, 100× cross-band) to avoid confusing two different moving objects
+
+## Inclination pre-filter (`--min-incl`)
+
+`run_heliolinx.py` can drop tracklets whose **hypothesis-implied orbital inclination** is below a threshold, before clustering. This removes the dense, prograde, low-inclination main-belt asteroid population — the main source of the megacluster degeneracy / OOM — while keeping out-of-plane interstellars.
+
+**Mechanics (read `compute_tracklet_inclinations` / `apply_incl_filter`):**
+- For each tracklet, project to the hypothesis heliocentric distance + observed angular velocity → 3D state → `h = r × v` → inclination vs ecliptic north, `arccos(h·ẑ/|h|)`. **Per-tracklet AND per-hypothesis** — the same tracklet gets a different inclination under each hypothesis, so a tracklet only needs to survive under the hypothesis that actually forms its cluster.
+- The angle is the **full 0–180°** — it is **NOT folded to 0–90°**. Retrograde orbits come out near 180°, not near 0°. Gate is `keep = incl >= min_incl`.
+- **`--min-incl > 0` forces `batch_size = 1`** (one hypothesis per heliolinc call) because the filtered tracklet set differs per hypothesis. This *also* bounds peak RAM to a single hypothesis's linkages — a second reason it mitigates the OOM, independent of how many tracklets it drops.
+
+**Recommended default: `--min-incl 15`** (used on all real-data runs so far). Removes only ~8% of tracklets but clears the densest part of the ecliptic band; keeps all three known interstellars (1I i≈123°, 2I i≈44°, 3I i≈175°). A higher threshold can be used as a targeted lever when recovering an object already known to be steeply inclined or retrograde.
 
 ## Key MJD reference points
 
@@ -164,5 +175,6 @@ Understanding this is essential for tuning `clustrad` on real Rubin data.
 
 **run_heliolinx.py CLI args added for tuning:**
 - `--clustrad` (default 15e6 km) — the primary lever for megacluster degeneracy
-- `--maxrms` (default 50e6 km) — linkPurify compactness threshold; currently > clustrad so filter is disabled. TODO: set to ~10–20% of final clustrad value.
+- `--maxrms` (default 50e6 km) — linkPurify compactness threshold; currently > clustrad so filter is disabled. Set to ~85% of clustrad (e.g. 85K km for clustrad=100K km).
 - `--hyp-batch-size` (default 50) — hypotheses per heliolinc+linkPurify batch; bounds peak RAM
+- `--min-incl` (default 0 = off) — inclination pre-filter in degrees; forces batch=1. See "Inclination pre-filter" above. Recommended default ~15; higher only as a targeted lever for a known steeply-inclined object.
